@@ -18,7 +18,21 @@ point algorithm works
 '''
 def lls_eight_point_alg(points1, points2):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    u1 = points1[:, 0]
+    v1 = points1[:, 1]
+    u1_p = points2[:, 0]
+    v1_p = points2[:, 1]
+    one = np.ones_like(u1)
+    W = np.c_[u1 * u1_p, v1 * u1_p, u1_p, u1 * v1_p, v1 * v1_p, v1_p, u1, v1, one]
+    # Use svd to find the lstsq solution for Wf = 0
+    u, s, vh = np.linalg.svd(W, full_matrices=True)
+    f = vh[-1, :]
+    F_t = f.reshape(3, 3)
+    # Enforce F_t to F which is rank 2
+    u, s, vh = np.linalg.svd(F_t, full_matrices=True)
+    s[-1] = 0
+    F = u.dot(np.diag(s)).dot(vh)
+    return F
 
 '''
 NORMALIZED_EIGHT_POINT_ALG  computes the fundamental matrix from matching points
@@ -35,7 +49,22 @@ point algorithm works
 '''
 def normalized_eight_point_alg(points1, points2):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    # Find the transformation matrix T and T': [[S, S*t], [0, 1]], because we translate first, then scale
+    # Translate: origin as image points centroid
+    # Scale: 2 / mean squared distance
+    mean1 = np.mean(points1, axis=0)
+    mean2 = np.mean(points2, axis=0)
+    
+    scale1 = np.sqrt(2 / np.mean(np.sum((points1 - mean1) ** 2, axis=1)))
+    scale2 = np.sqrt(2 / np.mean(np.sum((points2 - mean2) ** 2, axis=1)))
+    T = np.array([[scale1, 0, -scale1 * mean1[0]], [0, scale1, -scale1 * mean1[1]], [0, 0 ,1]])
+    T_p = np.array([[scale2, 0, -scale2 * mean2[0]], [0, scale2, -scale2 * mean2[1]], [0, 0, 1]])
+    # q = T * p
+    points1 = T.dot(points1.T).T
+    points2 = T_p.dot(points2.T).T
+    Fq = lls_eight_point_alg(points1, points2)
+    # de-normalize
+    return T_p.T.dot(Fq).dot(T)
 
 '''
 PLOT_EPIPOLAR_LINES_ON_IMAGES given a pair of images and corresponding points,
@@ -97,7 +126,11 @@ Returns:
 '''
 def compute_distance_to_epipolar_lines(points1, points2, F):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    l = F.T.dot(points2.T)
+    # distance from point(x0, y0) to line: Ax + By + C = 0 is
+    # |Ax0 + By0 + C| / sqrt(A^2 + B^2)
+    d = np.mean(np.abs(np.sum(l * points1.T, axis=0)) / np.sqrt(l[0, :] ** 2 + l[1, :] ** 2))
+    return d
 
 if __name__ == '__main__':
     for im_set in ['data/set1', 'data/set2']:

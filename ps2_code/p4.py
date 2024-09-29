@@ -6,7 +6,6 @@ import math
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from skimage.io import imread
 from sfm_utils import *
 
 '''
@@ -20,7 +19,16 @@ Returns:
 '''
 def estimate_initial_RT(E):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    U, d, vh = np.linalg.svd(E)
+    W = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
+    Q1 = U.dot(W).dot(vh)
+    Q2 = U.dot(W.T).dot(vh)
+    R1 = np.linalg.det(Q1) * Q1
+    R2 = np.linalg.det(Q2) * Q2
+    T1 = U[:, 2: 3]
+    T2 = -U[:, 2: 3]
+    RT = np.array([np.c_[R1, T1], np.c_[R1, T2], np.c_[R2, T1], np.c_[R2, T2]])
+    return RT
 
 '''
 LINEAR_ESTIMATE_3D_POINT given a corresponding points in different images,
@@ -33,7 +41,15 @@ Returns:
 '''
 def linear_estimate_3d_point(image_points, camera_matrices):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    M = image_points.shape[0]
+    A = np.zeros((2 * M, 4))
+    for i in range(M):
+        A[2 * i] = image_points[i, 0] * camera_matrices[i, 2, :] - camera_matrices[i, 0, :]
+        A[2 * i + 1] = image_points[i, 1] * camera_matrices[i, 2, :] - camera_matrices[i, 1, :] 
+    u, s, vh = np.linalg.svd(A)
+    point_3d = vh[-1, :]
+    point_3d = point_3d / point_3d[-1]
+    return point_3d[0: -1]
 
 '''
 REPROJECTION_ERROR given a 3D point and its corresponding points in the image
@@ -47,7 +63,12 @@ Returns:
 '''
 def reprojection_error(point_3d, image_points, camera_matrices):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    P = np.r_[point_3d, 1]
+    y = camera_matrices.dot(P)
+    y /= y[:, 2:3]
+    p_p = y[:, :2]
+    error = (p_p - image_points).flatten()
+    return error
 
 '''
 JACOBIAN given a 3D point and its corresponding points in the image
@@ -60,7 +81,21 @@ Returns:
 '''
 def jacobian(point_3d, camera_matrices):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    P1, P2, P3 = point_3d[0], point_3d[1], point_3d[2]
+    M = camera_matrices.shape[0]
+    jacobian = np.zeros((2*M, 3))
+    for i in range(M):
+        Mi = camera_matrices[i, :, :] # (3, 4)
+        y1 = Mi[0, 0] * P1 + Mi[0, 1] * P2 + Mi[0, 2] * P3 + Mi[0, 3]
+        y2 = Mi[1, 0] * P1 + Mi[1, 1] * P2 + Mi[1, 2] * P3 + Mi[1, 3]
+        y3 = Mi[2, 0] * P1 + Mi[2, 1] * P2 + Mi[2, 2] * P3 + Mi[2, 3]
+        jacobian[2*i, 0] = (Mi[0, 0] * y3 - y1 * Mi[2, 0]) / y3 ** 2
+        jacobian[2*i, 1] = (Mi[0, 1] * y3 - y1 * Mi[2, 1]) / y3 ** 2
+        jacobian[2*i, 2] = (Mi[0, 2] * y3 - y1 * Mi[2, 2]) / y3 ** 2
+        jacobian[2*i+1, 0] = (Mi[1, 0] * y3 - y2 * Mi[2, 0]) / y3 ** 2
+        jacobian[2*i+1, 1] = (Mi[1, 1] * y3 - y2 * Mi[2, 1]) / y3 ** 2
+        jacobian[2*i+1, 2] = (Mi[1, 2] * y3 - y2 * Mi[2, 2]) / y3 ** 2
+    return jacobian
 
 '''
 NONLINEAR_ESTIMATE_3D_POINT given a corresponding points in different images,
@@ -73,7 +108,13 @@ Returns:
 '''
 def nonlinear_estimate_3d_point(image_points, camera_matrices):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    # P_t = P_t - (J.T * J)^-1 * J.T * e
+    P_t = linear_estimate_3d_point(image_points, camera_matrices)
+    for i in range(10):
+        J = jacobian(P_t, camera_matrices)
+        e = reprojection_error(P_t, image_points, camera_matrices)
+        P_t -= np.linalg.inv(J.T.dot(J)).dot(J.T).dot(e)
+    return P_t
 
 '''
 ESTIMATE_RT_FROM_E from the Essential Matrix, we can compute  the relative RT 
@@ -88,7 +129,23 @@ Returns:
 '''
 def estimate_RT_from_E(E, image_points, K):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    RT = estimate_initial_RT(E)
+    N = image_points.shape[0]
+    for i in range(4):
+        count = 0
+        max_points = 0
+        rt = RT[i, :, :]
+        c1 = np.c_[K, np.zeros((3,1))]
+        c2 = K.dot(rt)
+        camera_matrices = np.array([c1, c2])
+        for j in range(N):
+            estimated_point = nonlinear_estimate_3d_point(image_points[j], camera_matrices)
+            if (estimated_point[2]) > 0:
+                count += 1
+        if count > max_points:
+            max_points = count
+            correct_RT = RT[i, :, :]
+    return correct_RT
 
 if __name__ == '__main__':
     run_pipeline = True

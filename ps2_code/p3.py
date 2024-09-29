@@ -19,7 +19,17 @@ Returns:
 '''
 def factorization_method(points_im1, points_im2):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    p1_t = points_im1 - np.mean(points_im1, axis=0)
+    p2_t = points_im2 - np.mean(points_im2, axis=0)
+    D = np.c_[p1_t[:, 0: 2], p2_t[:, 0: 2]].T
+    # D should be 4 × N
+    u, s, vh = np.linalg.svd(D)
+    u = u[:, 0: 3]
+    vh = vh[0: 3, :]
+    s = np.diag(s[0: 3])
+    motion = np.dot(u, np.sqrt(s))
+    structure = np.dot(np.sqrt(s), vh)
+    return structure, motion
 
 if __name__ == '__main__':
     for im_set in ['data/set1', 'data/set1_subset']:

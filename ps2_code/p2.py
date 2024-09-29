@@ -12,9 +12,15 @@ Arguments:
 Returns:
     epipole - the homogenous coordinates [x y 1] of the epipole in the image
 '''
-def compute_epipole(F):
+def compute_epipole(points1, points2, F):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    # p.'T * F * p = 0
+    l1 = F.T.dot(points2.T).T
+    # Solve l1 * e = 0
+    u, s, vh = np.linalg.svd(l1)
+    e = vh[-1, :]
+    e = e / e[2]
+    return e
 
 '''
 COMPUTE_H computes a homography to map an epipole to infinity along the horizontal axis 
@@ -43,7 +49,36 @@ Returns:
 '''
 def compute_matching_homographies(e2, F, im2, points1, points2):
     # TODO: Implement this method!
-    raise Exception('Not Implemented Error')
+    h = im2.shape[0]
+    w = im2.shape[1]
+    T = np.array([[1, 0, -w/2], [0, 1, -h/2], [0, 0, 1]])
+    e2_p = T.dot(e2)
+    e2_p = e2_p / e2_p[2]
+    e2x = e2_p[0]
+    e2y = e2_p[1]
+    if e2x >= 0:
+        a = 1
+    else:
+        a = -1
+    R1 = a * e2x / np.sqrt(e2x ** 2 + e2y ** 2)
+    R2 = a * e2y / np.sqrt(e2x ** 2 + e2y ** 2)
+    R = np.array([[R1, R2, 0], [-R2, R1, 0], [0, 0, 1]])
+    e2_p = R.dot(e2_p)
+    f = e2_p[0]
+    G = np.array([[1, 0, 0], [0, 1, 0], [-1/f, 0, 1]])
+    H2 = np.linalg.inv(T).dot(G).dot(R).dot(T)
+    
+    e_x = np.array([[0, -e2[2], e2[1]], [e2[2], 0, -e2[0]], [-e2[1], e2[0], 0]])
+    M = e_x.dot(F) + e2.reshape(3,1).dot(np.array([[1, 1, 1]]))
+    points1_t = H2.dot(M).dot(points1.T)
+    points2_t = H2.dot(points2.T)
+    points1_t /= points1_t[2, :]
+    points2_t /= points2_t[2, :]
+    b = points2_t[0, :]
+    a = np.linalg.lstsq(points1_t.T, b, rcond=None)[0]
+    H_A = np.array([a, [0, 1, 0], [0, 0, 1]])
+    H1 = H_A.dot(H2).dot(M)
+    return H1, H2
 
 if __name__ == '__main__':
     # Read in the data
@@ -55,15 +90,16 @@ if __name__ == '__main__':
     assert (points1.shape == points2.shape)
 
     F = normalized_eight_point_alg(points1, points2)
-    # F is such that such that (points2)^T * F * points1 = 0, so e1 is e' and e2 is e
-    e1 = compute_epipole(F.T)
-    e2 = compute_epipole(F)
+    e1 = compute_epipole(points1, points2, F)
+    e2 = compute_epipole(points2, points1, F.transpose())
     print("e1", e1)
     print("e2", e2)
 
     # Find the homographies needed to rectify the pair of images
     H1, H2 = compute_matching_homographies(e2, F, im2, points1, points2)
-    print('')
+    print("H1:\n", H1)
+    print
+    print("H2:\n", H2)
 
     # Transforming the images by the homographies
     new_points1 = H1.dot(points1.T)
